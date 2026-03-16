@@ -2,6 +2,30 @@
 
 SPA-бэкенд для трекера полезных привычек (DRF + JWT + Celery + Telegram).
 
+### Запуск через Docker (одной командой)
+
+- **1) Создать `.env`**:
+
+Локально можно взять `env.example` (для Docker важно, чтобы были PostgreSQL переменные и Redis URL). Самый простой вариант:
+
+```bash
+copy env.example .env
+```
+
+И поменять в `.env`:
+
+- `POSTGRES_HOST=db`
+- `CELERY_BROKER_URL=redis://redis:6379/0`
+- `CELERY_RESULT_BACKEND=redis://redis:6379/0`
+
+- **2) Запустить проект**:
+
+```bash
+docker compose up --build
+```
+
+После старта API будет доступен на `http://localhost/` (через nginx).
+
 ### Быстрый старт (Windows / PowerShell)
 
 - **1) Установить зависимости**:
@@ -127,3 +151,71 @@ celery -A config beat -l info
 ```
 
 Админка доступна на: `http://127.0.0.1:8000/admin/`
+
+---
+
+## CI/CD и деплой на сервер (GitHub Actions + Docker Compose)
+
+### Адрес сервера
+
+Развернутое приложение: **`http://<SERVER_IP>/`** (замените на ваш адрес после деплоя).
+
+### Что деплоится
+
+- Контейнеры: **Django (gunicorn)**, **PostgreSQL**, **Redis**, **Celery worker**, **Celery beat**, **nginx**
+- Прод-оркестрация: `docker-compose.prod.yml`
+- Образ приложения пушится в **GHCR**: `ghcr.io/<owner>/<repo>:sha-...`
+
+### Настройка сервера (Yandex Cloud VM)
+
+- **1) Установить Docker + Compose plugin** (Ubuntu/Debian):
+
+```bash
+sudo apt-get update
+sudo apt-get install -y ca-certificates curl git
+sudo install -m 0755 -d /etc/apt/keyrings
+sudo curl -fsSL https://download.docker.com/linux/ubuntu/gpg -o /etc/apt/keyrings/docker.asc
+sudo chmod a+r /etc/apt/keyrings/docker.asc
+echo \
+  "deb [arch=$(dpkg --print-architecture) signed-by=/etc/apt/keyrings/docker.asc] https://download.docker.com/linux/ubuntu \
+  $(. /etc/os-release && echo \"$VERSION_CODENAME\") stable" | \
+  sudo tee /etc/apt/sources.list.d/docker.list > /dev/null
+sudo apt-get update
+sudo apt-get install -y docker-ce docker-ce-cli containerd.io docker-buildx-plugin docker-compose-plugin
+sudo usermod -aG docker $USER
+newgrp docker
+```
+
+- **2) Подготовить директорию деплоя**:
+
+```bash
+mkdir -p ~/apps/coursework_5
+cd ~/apps/coursework_5
+```
+
+- **3) Создать `.env` на сервере**:
+
+Скопируйте `env.prod.example` в `.env` и заполните значения:
+
+```bash
+cp env.prod.example .env
+nano .env
+```
+
+### Настройка GitHub Secrets (для workflow `Deploy`)
+
+В репозитории GitHub → Settings → Secrets and variables → Actions добавьте:
+
+- **`SSH_HOST`**: IP/домен сервера
+- **`SSH_PORT`**: порт SSH (обычно `22`)
+- **`SSH_USER`**: пользователь (например, `ubuntu`)
+- **`SSH_KEY`**: приватный ключ (PEM) для подключения по SSH
+- **`DEPLOY_PATH`**: путь на сервере (например, `/home/ubuntu/apps/coursework_5`)
+
+### Как работает деплой
+
+- Workflow `CI` запускается на PR/пуш в `develop`: **flake8 + pytest + docker build**
+- Workflow `Deploy` запускается на push в `develop`:
+  - собирает и пушит образ в GHCR
+  - копирует `docker-compose.prod.yml` и nginx-конфиг на сервер
+  - делает `docker compose pull` и `docker compose up -d --remove-orphans`
