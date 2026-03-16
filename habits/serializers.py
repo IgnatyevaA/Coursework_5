@@ -36,7 +36,6 @@ class HabitSerializer(serializers.ModelSerializer):
     def validate(self, attrs):
         """Валидация данных привычки."""
         user = self.context["request"].user
-        
         # Создаём временный объект для валидации
         if self.instance:
             # При обновлении объединяем текущие данные с новыми
@@ -46,13 +45,11 @@ class HabitSerializer(serializers.ModelSerializer):
         else:
             # При создании создаём новый объект
             habit = Habit(user=user, **attrs)
-        
         # Вызываем валидацию модели
         try:
             habit.full_clean()
         except DjangoValidationError as exc:
             raise serializers.ValidationError(exc.message_dict) from exc
-        
         return attrs
 
     def create(self, validated_data):
